@@ -1,0 +1,143 @@
+---
+title: "ljin8-FML-Assignment4"
+author: "Lei Jin"
+date: "2024-03-15"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(readr)
+library(tidyverse)
+library(caret)
+library(knitr)
+library(class)  
+library(ggplot2)
+library(e1071)
+library(reshape2)
+library(factoextra)
+library(cluster)
+library(ggcorrplot)
+library(cowplot)
+```
+
+```{r}
+#load the data
+mydata <- read.csv("C:\\Users\\leile\\OneDrive\\School-Kent\\Fundamental of machine learning\\FML ASSIGNMENT.4\\Pharmaceuticals.csv")
+```
+
+```{r}
+#understand the data
+str(mydata)
+summary(mydata) 
+colMeans(is.na(mydata)) #No missing data
+```
+#Q1.Use only the numerical variables (1 to 9) to cluster the 21 firms. 
+```{r}
+row.names(mydata)<- mydata[,1]
+P_data<- mydata[,3:11]
+P_data
+```
+
+```{r}
+#Normalizing the data by using Scale function.
+P_mydata_Norm <- scale(P_data)
+head(P_mydata_Norm)
+
+```
+##Clustering the data by using euclidean distnace and plotting the graph  
+##Using Euclidean distance formula 
+```{r}
+distance<- dist(P_mydata_Norm, method = "euclidean")
+fviz_dist(distance)
+#Color intensity varies with increasing and decreasing distance. The distance between two observations (in this case, "pharma companies") is shown in the heatmap below. The red diagonals have a value of zero, and the dark blue diagonals have a value of 6, which means they are very far from each other.
+```
+#To see if there is any correlation amoung the variables choosen for clustering
+```{r}
+corr<-cor(P_mydata_Norm)
+ggcorrplot(corr,outline.color = "grey",lab = TRUE,hc.order = TRUE,type = "full") ##Return on Assets (ROA) has a strong positive correlation with Market Capitalization (Market_cap), Profit Margin, and Return on Equity (ROE). This means that as the value of ROA increases, the values of Market_cap, Profit Margin, and ROE are also likely to increase, and vice versa.
+```
+
+```{r}
+#To determine the number of clusters to do the cluster analysis using Elbow Method
+fviz_nbclust(P_mydata_Norm, kmeans, method = "wss")
+```
+#The graph above, which uses the Elbow approach, makes it unclear which of the values k=2, 3, 4, or 5 to select.
+```{r}
+#Silhouette method for determining no of clusters
+fviz_nbclust(P_mydata_Norm, kmeans, method = "silhouette")
+
+```
+
+```{r}
+#Applying K-means
+set.seed(123)
+k_5<- kmeans(P_mydata_Norm,centers=5,nstart = 25)
+k_5
+```
+#Q2.Interpret the clusters with respect to the numerical variables used in forming the clusters.
+```{r}
+#To Visualize the clusters
+k_5$size #Size of the cluster
+k_5$withinss
+k_5$cluster[16]
+paste("Observation 16th is country NVS and belongs to cluster", k_5$cluster[16])
+fviz_cluster(k_5, data = P_mydata_Norm)
+#Understanding the results : the entire data is divided into 5 clusters. The "cluster 1" has most number of companies however the "cluster 3" has only 2 countries.Also, Cluster 4 has high asset turnover ROA,ROE however cluster 3 has a high PE_ratio. Within-Cluster sum of square distance reveals data dispersion: cluster 3 (2.8) is more homogeneous than cluster 1 (21.9)
+```
+#Also using Kcca to get the clusters instead of Kmeans because K means uses the mean where as KCCA uses the KMedian
+```{r}
+set.seed(123)
+library(cluster)
+library(flexclust)
+P_KCCA <- kcca(P_mydata_Norm, k = 5, kccaFamily("kmedians"))
+P_KCCA
+clusters_index <- predict(P_KCCA)
+image(P_KCCA)
+points(P_mydata_Norm, col = clusters_index, pch = 16, cex = 0.5)
+#KCCA and K-means clustering is the type of problem they are used to solve. KCCA is used for finding the correlation between two sets of variables, while K-means clustering is used for partitioning a set of data points into K clusters. Additionally, KCCA is a supervised learning method that requires labeled data, while K-means clustering is an unsupervised learning method that does not require any labeled data.
+```
+
+#Q3 : Is there a pattern in the clusters with respect to the numerical variables (10 to 12)? (those not used in forming the clusters)
+```{r}
+Pharma_Pattern <-  mydata %>% select(c(12,13,14)) %>% mutate(Cluster = k_5$cluster)
+print(Pharma_Pattern) #The remaining three category to be considered are Median Recommendation, Location and Exchange.
+```
+
+#To visualize the distribution of businesses grouped by clusters and to identify any trends in the data, utilizing bar charts
+```{r}
+Median_Recom <- ggplot(Pharma_Pattern, mapping = aes(factor(Cluster), fill=Median_Recommendation)) +
+  geom_bar(position = 'dodge') + labs(x='Clusters', y='Frequence')
+
+Location_0 <- ggplot(Pharma_Pattern, mapping = aes(factor(Cluster), fill=Location)) + geom_bar(position = 'dodge') + labs(x='Clusters', y='Frequence')
+
+Exchange_0 <- ggplot(Pharma_Pattern, mapping = aes(factor(Cluster), fill=Exchange)) +
+geom_bar(position = 'dodge') + labs(x='Clusters', y='Frequence')
+plot_grid(Median_Recom, Location_0, Exchange_0)
+
+#The clustering analysis suggests that the companies in each cluster have similar characteristics in terms of their Median_Recommendation, Location, and Exchange.
+
+#Cluster -1 is dominated by American-based companies listed on the New York Stock Exchange, and they have a spread advice to keep their stock, suggesting that they are stable and relatively low-risk investments.
+#Cluster -2 has companies from Germany and the USA listed on stock exchange markets other than NYSE (AMEX and NASDAQ), and they have a hold or moderate buy recommendation.
+#Cluster -3 has a mix of American and Canadian companies listed on the NYSE, and they have a moderate buy or hold recommendation, indicating that they have growth potential but may also have some level of risk.
+#Cluster -4 has companies from the UK and USA, and they have a partially hold and buy recommendation for their stocks listed on the NYSE, indicating that they may have some potential for growth but also some level of risk.
+#Cluster -5 has companies from various locations listed on the NYSE, and they have a moderate buy or sell recommendation, suggesting that they may have some growth potential.
+```
+
+#4.Naming for each cluster using the variables in the dataset. 
+
+#Based on the entire analysis and looking at the characterstics of the clusters, 21 pharmaceutical industries can be categorized into 5 different groups:
+
+#Cluster 1- "Profitable and Prudent": High Profitability, Low Debt Cluster. This cluster comprises firms with high return on equity (ROE) and return on assets (ROA), indicating strong profitability. These firms also exhibit low leverage, suggesting minimal debt burden. Also it is dominated by American-based companies listed on the New York Stock Exchange, and they have a spread advice to keep their stock, suggesting that they are stable and relatively low-risk investments
+
+#Cluster 2 - "Riskier Ventures": Small Firms with High Risk Cluster. This cluster consists of smaller firms with relatively high market risk, as indicated by their high beta values. They also have lower market capitalization and profitability metrics compared to other clusters. Also,listed on stock exchange markets other than NYSE (AMEX and NASDAQ), and they have a hold or moderate buy recommendation.
+
+#Cluster 3 - "Growth Champions": High Growth, High Valuation Cluster. Firms in this cluster have high price-to-earnings (PE) ratios and expected revenue growth rates, suggesting strong investor optimism and growth prospects. However, they exhibit lower profitability metrics such as ROE and ROA. 
+
+#Cluster 4 - "Stable Giants": Large, Stable Performers Cluster. This cluster represents larger firms with stable performance metrics. They have moderate to high market capitalization, along with solid profitability and asset turnover ratios. Also,they have a partially hold and buy recommendation for their stocks listed on the NYSE.
+
+#Cluster 5 - "Growth Seekers": Low Efficiency, High Growth Cluster. Firms in this cluster demonstrate high expected revenue growth rates but have lower asset turnover and profitability metrics. They also exhibit moderate leverage. Also,these are the companies from various locations listed on the NYSE, and they have a moderate buy or sell recommendation, suggesting that they may have some growth potential.
+
+
